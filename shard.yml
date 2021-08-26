@@ -1,0 +1,13 @@
+name: ipxed
+version: 0.1.0
+
+authors:
+  - Michael Fellinger <michael.fellinger@iohk.io>
+
+targets:
+  ipxed:
+    main: src/ipxed.cr
+
+crystal: 1.0.0
+
+license: Apache-2.0
