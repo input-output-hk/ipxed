@@ -19,6 +19,7 @@
   outputs = { self, utils, nixpkgs, ... }@inputs:
     let
     in utils.lib.simpleFlake {
+      systems = [ "x86_64-linux" ];
       inherit nixpkgs;
       preOverlays = [ inputs.crystal.overlay inputs.devshell.overlay ];
 
@@ -30,6 +31,8 @@
           src = inputs.inclusive.lib.inclusive ./. [ ./src ./shard.yml ];
         };
       };
+
+      nixosModules = { ipxed = import ./modules/ipxe-server.nix; };
 
       packages = { ipxed }@pkgs: { defaultPackage = ipxed; };
 
