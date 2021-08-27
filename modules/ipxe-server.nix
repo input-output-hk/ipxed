@@ -34,7 +34,14 @@ in {
     systemd.services.ipxed = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
+
       environment.IPXED_TOKEN_FILE = cfg.tokenFile;
+
+      serviceConfig = {
+        Restart = "on-failure";
+        RestartSec = "10s";
+      };
+
       script = ''
         ${pkgs.ipxed}/bin/ipxed \
           --port ${toString cfg.port} \
