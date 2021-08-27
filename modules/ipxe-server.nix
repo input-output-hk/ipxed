@@ -37,6 +37,8 @@ in {
 
       environment.IPXED_TOKEN_FILE = cfg.tokenFile;
 
+      path = [ pkgs.nix pkgs.git ];
+
       serviceConfig = {
         Restart = "on-failure";
         RestartSec = "10s";
