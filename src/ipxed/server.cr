@@ -32,19 +32,19 @@ class Ipxed
 
       token = ctx.request.query_params["token"]?.to_s
 
-      unless Crypto::Subtle.constant_time_compare(token, @token)
-        answer(ctx, HTTP::Status::FORBIDDEN, "Forbidden")
-      end
-
-      # Matches URLs like this:
-      # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe
-      # path:/some/path/nixosConfigurations.foobar/netboot.ipxe
-      case url
-      when %r(^/([^:]+:.+?)/([^/]+)/([^/]+)$)
-        flake, system, file = $1, $2, $3
-        serve(ctx, repos, flake, system, file)
+      if Crypto::Subtle.constant_time_compare(token, @token)
+        # Matches URLs like this:
+        # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe
+        # path:/some/path/nixosConfigurations.foobar/netboot.ipxe
+        case url
+        when %r(^/([^:]+:.+?)/([^/]+)/([^/]+)$)
+          flake, system, file = $1, $2, $3
+          serve(ctx, repos, flake, system, file)
+        else
+          answer(ctx, HTTP::Status::NOT_FOUND, "Not Found")
+        end
       else
-        answer(ctx, HTTP::Status::NOT_FOUND, "Not Found")
+        answer(ctx, HTTP::Status::FORBIDDEN, "Forbidden")
       end
     end
 
