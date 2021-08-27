@@ -26,17 +26,19 @@ class Ipxed
 
   def run
     server = HTTP::Server.new do |ctx|
-      url = URI.decode(ctx.request.resource)
+      params = ctx.request.query_params
 
-      LOG.info { "Received request for #{url}" }
+      path = URI.decode(ctx.request.path)
 
-      token = ctx.request.query_params["token"]?.to_s
+      LOG.info { "Received request for #{path}" }
+
+      token = params["token"]?.to_s
 
       if Crypto::Subtle.constant_time_compare(token, @token)
         # Matches URLs like this:
         # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe
         # path:/some/path/nixosConfigurations.foobar/netboot.ipxe
-        case url
+        case path
         when %r(^/([^:]+:.+?)/([^/]+)/([^/]+)$)
           flake, system, file = $1, $2, $3
           serve(ctx, repos, flake, system, file)
@@ -59,7 +61,9 @@ class Ipxed
 
     LOG.debug { "Building #{flake_path}..." }
 
-    status = Process.run("nix", error: STDERR, args: ["-L", "build", "--no-link", flake_path])
+    status = Process.run("nix", error: STDERR, args: [
+      "-L", "build", "--option", "tarball-ttl", "0", "--no-link", flake_path,
+    ])
 
     if status.success?
       LOG.debug { "Built #{flake_path}" }
@@ -104,8 +108,8 @@ class Ipxed
 
     LOG.info &.emit("Checking", flake: flake)
 
-    unless repos.includes?(flake)
-      answer(ctx, HTTP::Status::FORBIDDEN, "This repo is not allowed")
+    unless repos.any? { |repo| flake.starts_with?(repo) }
+      return answer(ctx, HTTP::Status::FORBIDDEN, "This repo is not allowed")
     end
 
     LOG.info &.emit("Serving", flake: flake, system: system, file: file, attr: attr)
@@ -117,5 +121,6 @@ class Ipxed
     ctx.response.content_type = "text/plain"
     ctx.response.status = status
     ctx.response.print body
+    ctx.response.close
   end
 end
