@@ -4,12 +4,21 @@ require "option_parser"
 repos = [] of String
 host = "0.0.0.0"
 port = 7788
+token = if token_file = ENV["IPXED_TOKEN_FILE"]?
+          File.read(token_file).strip
+        else
+          ""
+        end
 
 op = OptionParser.new do |parser|
   parser.banner = "Usage: ipxed [FLAGS]"
 
   parser.on "--allow=ALLOW", "comma separated list of repos to allow builds for (default: #{repos.join(",")})" do |value|
     repos = value.split(",").map(&.strip)
+  end
+
+  parser.on "--token=TOKEN", "Secret token to be able to use the API" do |value|
+    token = value
   end
 
   parser.on "--host=HOST", "Host to listen on (default: #{host})" do |value|
@@ -32,4 +41,5 @@ Ipxed.new(
   repos: repos,
   host: host,
   port: port,
+  token: token,
 ).run

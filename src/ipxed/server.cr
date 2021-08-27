@@ -1,4 +1,5 @@
 require "http/server"
+require "crypto/subtle"
 
 # iPXE Server
 class Ipxed
@@ -15,8 +16,12 @@ class Ipxed
   property repos : Array(String)
   property host : String
   property port : Int32
+  property token : String
 
-  def initialize(@repos, @host, @port)
+  def initialize(@repos, @host, @port, @token)
+    if @token == ""
+      LOG.warn { "No token given, everyone will have permission to build request." }
+    end
   end
 
   def run
@@ -24,6 +29,12 @@ class Ipxed
       url = URI.decode(ctx.request.resource)
 
       LOG.info { "Received request for #{url}" }
+
+      token = ctx.request.query_params["token"]?.to_s
+
+      unless Crypto::Subtle.constant_time_compare(token, @token)
+        answer(ctx, HTTP::Status::FORBIDDEN, "Forbidden")
+      end
 
       # Matches URLs like this:
       # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe

@@ -21,12 +21,20 @@ in {
         Repositories that are allowed to be built, in form of a list of owner/repo strings.
       '';
     };
+
+    tokenFile = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Read the access token from this file.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     systemd.services.ipxed = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
+      environment.IPXED_TOKEN_FILE = cfg.tokenFile;
       script = ''
         ${pkgs.ipxed}/bin/ipxed \
           --port ${toString cfg.port} \
