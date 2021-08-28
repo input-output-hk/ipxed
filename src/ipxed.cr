@@ -22,7 +22,7 @@ op = OptionParser.new do |parser|
     token = value
   end
 
-  parser.on "--period=PERIOD", "Time in seconds to allow subsequent unauthenticated API requests after token authentication from the same IP (Default: 3600)" do |value|
+  parser.on "--period=PERIOD", "Time in seconds to allow subsequent unauthenticated API requests after token authentication from the same IP (default: 3600)" do |value|
     period = value.to_i
   end
 

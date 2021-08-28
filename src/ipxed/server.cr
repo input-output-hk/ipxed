@@ -30,7 +30,6 @@ class Ipxed
     else
       @anonMode = false
     end
-    LOG.info { "Period: #{@period}" }
   end
 
   def run
