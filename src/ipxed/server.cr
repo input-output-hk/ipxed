@@ -17,24 +17,47 @@ class Ipxed
   property host : String
   property port : Int32
   property token : String
+  property period : Int32
 
-  def initialize(@repos, @host, @port, @token)
+  @anonMode : Bool
+  @authorizedUntil = Hash(String, Int64).new
+
+
+  def initialize(@repos, @host, @port, @token, @period)
     if @token == ""
       LOG.warn { "No token given, everyone will have permission to build request." }
+      @anonMode = true
+    else
+      @anonMode = false
     end
+    LOG.info { "Period: #{@period}" }
   end
 
   def run
     server = HTTP::Server.new do |ctx|
+      authenticated = false
       params = ctx.request.query_params
-
-      path = URI.decode(ctx.request.path)
-
-      LOG.info { "Received request for #{path}" }
-
       token = params["token"]?.to_s
 
-      if Crypto::Subtle.constant_time_compare(token, @token)
+      # Obtain the real IP of the request track an authenticated time window
+      ipPort = ctx.request.remote_address
+      xRealIp = ctx.request.headers["X-Real-IP"]?
+      ip = Socket::IPAddress.parse("tcp://#{real_ip_port(xRealIp) || ipPort}").address
+
+      if @anonMode == false && Crypto::Subtle.constant_time_compare(token, @token)
+        authenticated = true
+        @authorizedUntil[ip] = Time.utc.to_unix + @period
+      elsif @authorizedUntil.has_key?(ip) && @authorizedUntil[ip] > Time.utc.to_unix
+        authenticated = true
+      elsif @authorizedUntil.has_key?(ip) && @authorizedUntil[ip] < Time.utc.to_unix
+        @authorizedUntil.delete(ip)
+      end
+
+      path = URI.decode(ctx.request.path)
+      authRemaining = @authorizedUntil.has_key?(ip) ? (@authorizedUntil[ip] - Time.utc.to_unix).to_s : "N/A"
+      LOG.info { "Request {anonMode: #{@anonMode}, auth: #{authenticated}, authRemaining: #{authRemaining}, IP: #{ip}, path: #{path}" }
+
+      if @anonMode || authenticated
         # Matches URLs like this:
         # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe
         # path:/some/path/nixosConfigurations.foobar/netboot.ipxe
@@ -122,5 +145,12 @@ class Ipxed
     ctx.response.status = status
     ctx.response.print body
     ctx.response.close
+  end
+
+  def real_ip_port(header : String) : String
+    "#{header}:443"
+  end
+
+  def real_ip_port(header : Nil) : Nil
   end
 end

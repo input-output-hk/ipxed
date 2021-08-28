@@ -9,6 +9,7 @@ token = if token_file = ENV["IPXED_TOKEN_FILE"]?
         else
           ""
         end
+period = 3600
 
 op = OptionParser.new do |parser|
   parser.banner = "Usage: ipxed [FLAGS]"
@@ -19,6 +20,10 @@ op = OptionParser.new do |parser|
 
   parser.on "--token=TOKEN", "Secret token to be able to use the API" do |value|
     token = value
+  end
+
+  parser.on "--period=PERIOD", "Time in seconds to allow subsequent unauthenticated API requests after token authentication from the same IP (Default: 3600)" do |value|
+    period = value.to_i
   end
 
   parser.on "--host=HOST", "Host to listen on (default: #{host})" do |value|
@@ -42,4 +47,5 @@ Ipxed.new(
   host: host,
   port: port,
   token: token,
+  period: period,
 ).run
