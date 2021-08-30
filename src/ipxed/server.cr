@@ -1,5 +1,6 @@
 require "http/server"
 require "crypto/subtle"
+require "json"
 
 # iPXE Server
 class Ipxed
@@ -17,46 +18,34 @@ class Ipxed
   property host : String
   property port : Int32
   property token : String
-  property period : Int32
 
-  @anonMode : Bool
   @authorizedUntil = Hash(String, Int64).new
 
-
-  def initialize(@repos, @host, @port, @token, @period)
+  def initialize(@repos, @host, @port, @token)
     if @token == ""
       LOG.warn { "No token given, everyone will have permission to build request." }
-      @anonMode = true
-    else
-      @anonMode = false
     end
   end
 
   def run
     server = HTTP::Server.new do |ctx|
-      authenticated = false
       params = ctx.request.query_params
       token = params["token"]?.to_s
+      path = URI.decode(ctx.request.path)
 
-      # Obtain the real IP of the request track an authenticated time window
-      ipPort = ctx.request.remote_address
-      xRealIp = ctx.request.headers["X-Real-IP"]?
-      ip = Socket::IPAddress.parse("tcp://#{real_ip_port(xRealIp) || ipPort}").address
+      LOG.info { "Received request for #{path}" }
 
-      if @anonMode == false && Crypto::Subtle.constant_time_compare(token, @token)
-        authenticated = true
-        @authorizedUntil[ip] = Time.utc.to_unix + @period
-      elsif @authorizedUntil.has_key?(ip) && @authorizedUntil[ip] > Time.utc.to_unix
-        authenticated = true
-      elsif @authorizedUntil.has_key?(ip) && @authorizedUntil[ip] < Time.utc.to_unix
-        @authorizedUntil.delete(ip)
+      # iPXE can also set params in the body
+      if body = ctx.request.body
+        URI::Params.parse(body.gets_to_end).each do |key, value|
+          params[key] = value.strip if value.strip != ""
+        end
       end
 
-      path = URI.decode(ctx.request.path)
-      authRemaining = @authorizedUntil.has_key?(ip) ? (@authorizedUntil[ip] - Time.utc.to_unix).to_s : "N/A"
-      LOG.info { "Request {anonMode: #{@anonMode}, auth: #{authenticated}, authRemaining: #{authRemaining}, IP: #{ip}, path: #{path}" }
+      LOG.info { "Received request for #{path}" }
+      LOG.debug { "Params: #{params.inspect}" }
 
-      if @anonMode || authenticated
+      if Crypto::Subtle.constant_time_compare(token, @token)
         # Matches URLs like this:
         # github:owner/repo/nixosConfigurations.foobar/netboot.ipxe
         # path:/some/path/nixosConfigurations.foobar/netboot.ipxe
@@ -65,9 +54,11 @@ class Ipxed
           flake, system, file = $1, $2, $3
           serve(ctx, repos, flake, system, file)
         else
+          LOG.info { "Not Found: #{path}" }
           answer(ctx, HTTP::Status::NOT_FOUND, "Not Found")
         end
       else
+        LOG.info { "Token doesn't match: #{path}" }
         answer(ctx, HTTP::Status::FORBIDDEN, "Forbidden")
       end
     end
@@ -94,15 +85,37 @@ class Ipxed
     end
   end
 
-  def out_path(flake, system, attr)
-    build(flake, system, attr)
-
+  def out_path(flake, system, attr, path)
     flake_path = "#{flake}##{system}.config.system.build.#{attr}.outPath"
 
     LOG.debug { "Evaluating #{flake_path}..." }
 
     output = IO::Memory.new
-    status = Process.run("nix", error: STDERR, output: output, args: ["eval", "--raw", flake_path])
+    status = Process.run(
+      "nix",
+      error: STDERR,
+      output: output,
+      args: [
+        "eval",
+        "#{flake}##{system}",
+        "--impure",
+        "--json",
+        "--option", "tarball-ttl", "0",
+        "--apply", %(
+          (system:
+            with builtins;
+            let
+              build = system.config.system.build;
+              attrs = [ "netbootIpxeScript" "kernel" "netbootRamdisk" ];
+            in listToAttrs (map (name:
+              let path = build.${name}.outPath;
+              in {
+                inherit name;
+                value = seq (pathExists path) path;
+              }) attrs))
+      ),
+      ]
+    )
 
     if status.success?
       LOG.debug { "Evaluated #{flake_path}" }
@@ -110,11 +123,14 @@ class Ipxed
       raise "Failed to evaluate #{flake_path}: #{status.inspect}"
     end
 
-    output.to_s
+    parsed = JSON.parse(output.to_s)
+    pp! parsed
+
+    "#{parsed[attr]}/#{path}"
   end
 
   def serve_file(ctx, flake, system, attr, path)
-    result = "#{out_path(flake, system, attr)}/#{path}"
+    result = out_path(flake, system, attr, path)
     size = File.size(result)
     ctx.response.content_length = size
 
