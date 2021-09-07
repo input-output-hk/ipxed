@@ -38,10 +38,10 @@
 
       hydraJobs = { ipxed }@pkgs: pkgs;
 
-      devShell = { devshell, lib, crystal, shards, crystal2nix }:
+      devShell = { devshell, lib, crystal, shards, crystal2nix, age }:
         devshell.mkShell {
           name = "ipxe-server";
-          packages = [ crystal shards crystal2nix ];
+          packages = [ crystal shards crystal2nix age ];
           env = [ ];
         };
     };
